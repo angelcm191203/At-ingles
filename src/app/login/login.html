@@ -1,0 +1,66 @@
+<div class="login-container" [class.login-mode]="isLoginMode">
+  
+  <!-- Contenedor general de los formularios -->
+  <div class="forms-container">
+    <div class="signin-signup">
+
+      <!-- Formulario de Registro (Izquierda) -->
+      <form class="sign-up-form" (ngSubmit)="onRegister()">
+        <div class="logo-section">
+          <img src="/logo ci.png.jpeg" alt="Logo Coordinación de Inglés" class="logo-img">
+        </div>
+        <h2 class="title">Crear Cuenta</h2>
+        <div class="input-field">
+          <input type="text" placeholder="Nombre completo" [(ngModel)]="registroData.nombre_completo" name="nombre" required />
+        </div>
+        <div class="input-field">
+          <input type="email" placeholder="Correo electrónico" [(ngModel)]="registroData.correo" name="correoReg" required />
+        </div>
+        <div class="input-field">
+          <input type="password" placeholder="Contraseña" [(ngModel)]="registroData.contrasena" name="passReg" required />
+        </div>
+        <button type="submit" class="btn solid">Registrarse</button>
+      </form>
+
+      <!-- Formulario de Iniciar Sesión (Derecha) -->
+      <form class="sign-in-form" (ngSubmit)="onLogin()">
+        <div class="logo-section">
+          <img src="/logo ci.png.jpeg" alt="Logo Coordinación de Inglés" class="logo-img">
+        </div>
+        <h2 class="title">Iniciar Sesión</h2>
+        <div class="input-field">
+          <input type="text" placeholder="Usuario o Correo" [(ngModel)]="loginData.correo" name="correoLog" required />
+        </div>
+        <div class="input-field">
+          <input type="password" placeholder="Contraseña" [(ngModel)]="loginData.contrasena" name="passLog" required />
+        </div>
+        <button type="submit" class="btn solid">Ingresar</button>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Apartado de leyendas y paneles laterales -->
+  <div class="panels-container">
+    
+    <!-- Apartado de leyenda registro -->
+    <div class="panel left-panel">
+      <h3>¿Nuevo por aquí?</h3>
+      <p>Regístrate para formar parte de la plataforma de la Coordinación de Inglés y accede a todos los recursos.</p>
+      <button class="btn transparent" (click)="toggleMode(false)">
+        Registrarse
+      </button>
+    </div>
+
+    <!-- Apartado de leyenda iniciar sesión -->
+    <div class="panel right-panel">
+      <h3>¿Ya tienes una cuenta?</h3>
+      <p>Inicia sesión con tus credenciales para continuar con tus actividades y clases.</p>
+      <button class="btn transparent" (click)="toggleMode(true)">
+        Iniciar Sesión
+      </button>
+    </div>
+
+  </div>
+
+</div>
