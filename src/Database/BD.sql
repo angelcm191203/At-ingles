@@ -1,15 +1,11 @@
--- Tabla de registro de usuarios 
+-- tabla de usuarios
 CREATE TABLE usuarios (
     id SERIAL PRIMARY KEY,
     nombre_completo VARCHAR(100) NOT NULL,
-    correo VARCHAR(150) UNIQUE NOT NULL,
-    contrasena VARCHAR(255) NOT NULL, 
-    
-    -- recuperacion de contraseña 
-    token_recuperacion VARCHAR(255) NULL,
-    token_expiracion TIMESTAMP NULL,      
-    
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    numero_empleado VARCHAR(50) UNIQUE NOT NULL,
+    contrasena VARCHAR(255) NOT NULL
 );
 
-select * from usuarios
+SELECT * FROM usuarios; -- consulta de usuarios 
+delete from usuarios; -- borrar usuarios (uso por pruebas)
+TRUNCATE TABLE usuarios RESTART IDENTITY; -- restablece id (uso por pruebas)
