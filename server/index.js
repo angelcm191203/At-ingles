@@ -14,7 +14,7 @@ app.use(express.json());
 const pool = new Pool({
     user: 'postgres',
     host: 'localhost',
-    database: 'At-ingles',
+    database: 'Alt-ingles',
     password: 'root', // contraseña bd
     port: 5432,
 });
@@ -94,14 +94,14 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ error: 'Número de empleado o contraseña incorrectos.' });
         }
 
-        res.json({
-            mensaje: 'Inicio de sesión exitoso',
-            usuario: {
-                id: usuario.id,
-                nombre_completo: usuario.nombre_completo,
-                numero_empleado: usuario.numero_empleado
-            }
-        });
+      res.json({
+    mensaje: 'Inicio de sesión exitoso',
+    usuario: {
+        id: usuario.id,
+        nombre_completo: usuario.nombre_completo,
+        numero_empleado: usuario.numero_empleado
+    }
+});
 
     } catch (error) {
         console.error(error);
