@@ -1,1 +1,41 @@
 <p>docente works!</p>
+ <div class="docente-container">
+  <h2>Avance de Alumnos</h2>
+
+  <!-- Mensaje mientras carga -->
+  <p *ngIf="cargando">Cargando datos...</p>
+
+  <!-- Mensaje si hubo un error -->
+  <p *ngIf="error">{{ error }}</p>
+
+  <!-- Mensaje si ya cargó pero no hay datos -->
+  <p *ngIf="!cargando && !error && alumnos.length === 0">
+    Aún no se ha importado ningún Excel con datos.
+  </p>
+
+  <!-- Tabla con los datos, solo si hay alumnos -->
+  <table *ngIf="!cargando && alumnos.length > 0">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Materia</th>
+        <th>Calificación</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let alumno of alumnos">
+        <td>{{ alumno.nombre }}</td>
+        <td>{{ alumno.materia }}</td>
+        <td>{{ alumno.calificacion }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <button (click)="cargarDatos()">Actualizar datos</button>
+</div>
+
+<li>
+  <a routerLink="/admin" routerLinkActive="active" class="btn btn-primary">
+    Volver al Admin
+  </a>
+</li>
