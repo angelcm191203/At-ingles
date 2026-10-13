@@ -23,7 +23,7 @@ export class Admin {
     }
   }
 
-  subirExcel(): void {
+    subirExcel(): void {
     if (!this.archivoSeleccionado) {
       this.mensaje = 'Por favor selecciona un archivo primero.';
       return;
@@ -33,7 +33,7 @@ export class Admin {
     formData.append('archivo', this.archivoSeleccionado);
 
     this.http.post<{ mensaje: string; filas: number }>(
-      'http://localhost:3001/upload',
+      'http://localhost:3000/upload',   
       formData
     ).subscribe({
       next: (respuesta) => {
@@ -41,12 +41,13 @@ export class Admin {
       },
       error: (error) => {
         console.error(error);
-        this.mensaje = 'Ocurrió un error al subir el archivo.';
+        // Muestra el mensaje que manda el servidor, si existe
+        this.mensaje = error.error?.error || 'Ocurrió un error al subir el archivo.';
       }
     });
   }
-
   cerrarSesion(): void {
-    this.router.navigate(['/login']);
-  }
+  localStorage.removeItem('usuario');
+  this.router.navigate(['/login']);
+}
 }

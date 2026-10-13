@@ -70,6 +70,7 @@ export class LoginComponent {
   }
 
   // Función para iniciar sesión
+    
   onLogin() {
     if (!this.loginData.numero_empleado || !this.loginData.contrasena) {
       alert('⚠️ Todos los campos son obligatorios para iniciar sesión.');
@@ -81,11 +82,14 @@ export class LoginComponent {
         alert('¡Bienvenido, ' + response.usuario.nombre_completo + '!');
         console.log(response);
 
-        // Verificamos si es el Administrador maestro
-        if (this.loginData.numero_empleado === '2525260005') {
-          this.router.navigate(['/admin']); // Lo mandamos a subir el Excel
+        // Guarda la sesión: el guard y la vista de docente la leen de aquí
+        localStorage.setItem('usuario', JSON.stringify(response.usuario));
+
+        // Redirige según el rol que manda el backend
+        if (response.usuario.rol === 'admin') {
+          this.router.navigate(['/admin']);    // sube el Excel
         } else {
-          this.router.navigate(['/docente']); // Lo mandamos a ver el avance
+          this.router.navigate(['/docente']);  // ve sus grupos
         }
       },
       error: (err) => {
@@ -93,4 +97,5 @@ export class LoginComponent {
       }
     });
   }
+
 }

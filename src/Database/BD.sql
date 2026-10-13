@@ -10,3 +10,14 @@ CREATE TABLE usuarios (
 SELECT * FROM usuarios; -- consulta de usuarios 
 delete from usuarios; -- borrar usuarios (uso por pruebas)
 TRUNCATE TABLE usuarios RESTART IDENTITY; -- restablece id (uso por pruebas)
+--tabla grupos donde se guarda la informacion del excel 
+CREATE TABLE grupos (
+    id SERIAL PRIMARY KEY,
+    grupo VARCHAR(50),
+    docente VARCHAR(150),
+    horario VARCHAR(200),
+    espacio VARCHAR(50),
+    asignatura VARCHAR(100),
+    promedio NUMERIC(5,2),
+    fecha_subida TIMESTAMP DEFAULT NOW()
+);
