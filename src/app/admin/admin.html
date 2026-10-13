@@ -1,16 +1,18 @@
 <div class="admin-container">
-  <h2>Panel de Administración</h2>
+  <header class="header">
+    <h2>Panel de Administración</h2>
+    <button class="btn-logout" (click)="cerrarSesion()">Cerrar Sesión</button>
+  </header>
 
-  <div class="upload-box">
-    <h3>Importar Excel</h3>
-    <p>Selecciona el archivo Excel con los datos que verá el docente.</p>
+  <div class="card">
+    <h3>Importar Excel de Alumnos</h3>
+    <p class="subtitle">Selecciona el archivo Excel con los datos que visualizarán los docentes.</p>
 
-    <input type="file" accept=".xlsx, .xls" (change)="onFileSelected($event)" />
+    <div class="upload-section">
+      <input type="file" (change)="onFileSelected($event)" id="fileInput" class="file-input" />
+      <button class="btn-primary" (click)="subirExcel()">Subir Excel</button>
+    </div>
 
-    <button (click)="subirExcel()">Subir Excel</button>
-
-    <p *ngIf="mensaje">{{ mensaje }}</p>
+    <p *ngIf="mensaje" class="mensaje-alerta">{{ mensaje }}</p>
   </div>
 </div>
-
-

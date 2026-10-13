@@ -1,41 +1,41 @@
-<p>docente works!</p>
- <div class="docente-container">
-  <h2>Avance de Alumnos</h2>
+<div class="docente-container">
+  <header class="header">
+    <div class="header-titles">
+      <h2>Avance de Alumnos</h2>
+      <p class="subtitle">Consulta general de registros y franjas asignadas</p>
+    </div>
+    <button class="btn-logout" (click)="cerrarSesion()">Cerrar Sesión</button>
+  </header>
 
-  <!-- Mensaje mientras carga -->
-  <p *ngIf="cargando">Cargando datos...</p>
+  <div class="card-main">
+    <div class="info-bar" *ngIf="fechaActualizacion">
+      <span class="badge-update">📅 Última actualización: {{ fechaActualizacion }}</span>
+      <span class="badge-total" *ngIf="alumnos.length > 0">Total de registros: {{ alumnos.length }}</span>
+    </div>
 
-  <!-- Mensaje si hubo un error -->
-  <p *ngIf="error">{{ error }}</p>
+    <p *ngIf="cargando" class="status-text">Cargando información...</p>
+    <p *ngIf="error" class="error-text">{{ error }}</p>
 
-  <!-- Mensaje si ya cargó pero no hay datos -->
-  <p *ngIf="!cargando && !error && alumnos.length === 0">
-    Aún no se ha importado ningún Excel con datos.
-  </p>
+    <!-- Tabla con diseño moderno y limpio -->
+    <div class="table-container" *ngIf="!cargando && alumnos.length > 0">
+      <table class="modern-table">
+        <thead>
+          <tr>
+            <th *ngFor="let col of columnas">{{ col }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of alumnos; let i = index">
+            <td *ngFor="let col of columnas">
+              {{ row[col] !== undefined && row[col] !== null ? row[col] : '-' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-  <!-- Tabla con los datos, solo si hay alumnos -->
-  <table *ngIf="!cargando && alumnos.length > 0">
-    <thead>
-      <tr>
-        <th>Nombre</th>
-        <th>Materia</th>
-        <th>Calificación</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let alumno of alumnos">
-        <td>{{ alumno.nombre }}</td>
-        <td>{{ alumno.materia }}</td>
-        <td>{{ alumno.calificacion }}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <button (click)="cargarDatos()">Actualizar datos</button>
+    <p *ngIf="!cargando && alumnos.length === 0" class="status-text">
+      No hay datos registrados por el administrador todavía.
+    </p>
+  </div>
 </div>
-
-<li>
-  <a routerLink="/admin" routerLinkActive="active" class="btn btn-primary">
-    Volver al Admin
-  </a>
-</li>

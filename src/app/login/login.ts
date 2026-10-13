@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms'; 
 import { HttpClient } from '@angular/common/http'; 
 import { Router } from '@angular/router';
+
 @Component({
   selector: 'app-login',
   standalone: true,
@@ -69,23 +70,27 @@ export class LoginComponent {
   }
 
   // Función para iniciar sesión
- onLogin() {
-  if (!this.loginData.numero_empleado || !this.loginData.contrasena) {
-    alert('⚠️ Todos los campos son obligatorios para iniciar sesión.');
-    return;
-  }
-
-  this.http.post('http://localhost:3000/api/login', this.loginData).subscribe({
-    next: (response: any) => {
-      alert('¡Bienvenido, ' + response.usuario.nombre_completo + '!');
-      console.log(response);
-
-      // Redirige a la interfaz de docente después del login exitoso
-      this.router.navigate(['/docente']);
-    },
-    error: (err) => {
-      alert(err.error.error || 'Credenciales incorrectas');
+  onLogin() {
+    if (!this.loginData.numero_empleado || !this.loginData.contrasena) {
+      alert('⚠️ Todos los campos son obligatorios para iniciar sesión.');
+      return;
     }
-  });
-}
+
+    this.http.post('http://localhost:3000/api/login', this.loginData).subscribe({
+      next: (response: any) => {
+        alert('¡Bienvenido, ' + response.usuario.nombre_completo + '!');
+        console.log(response);
+
+        // Verificamos si es el Administrador maestro
+        if (this.loginData.numero_empleado === '2525260005') {
+          this.router.navigate(['/admin']); // Lo mandamos a subir el Excel
+        } else {
+          this.router.navigate(['/docente']); // Lo mandamos a ver el avance
+        }
+      },
+      error: (err) => {
+        alert(err.error.error || 'Credenciales incorrectas');
+      }
+    });
+  }
 }
