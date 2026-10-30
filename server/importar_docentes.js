@@ -2,7 +2,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const XLSX = require('xlsx');
 
-// ===== AJUSTA SOLO ESTO =====
+
 const CONFIG = {
     archivo: 'USUARIOS CI.xlsx',
      hoja: null,
@@ -11,7 +11,7 @@ const CONFIG = {
     colCurp: 'USUARIO',         // las 4 letras que serán la contraseña
    soloProbar: false         // true = solo muestra qué haría, NO guarda nada
 };
-// ============================
+
 
 const pool = new Pool({
     user: 'postgres',

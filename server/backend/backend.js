@@ -15,7 +15,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 app.get('/', (req, res) => {
-  res.send('Servidor backend funcionando 🚀');
+  res.send('Servidor backend funcionando ');
 });
 
 app.post('/upload', upload.single('archivo'), (req, res) => {
