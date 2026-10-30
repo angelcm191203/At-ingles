@@ -1,41 +1,115 @@
 <div class="docente-container">
+
   <header class="header">
     <div class="header-titles">
-      <h2>Avance de Alumnos</h2>
-      <p class="subtitle">Consulta general de registros y franjas asignadas</p>
+      <h2>{{ esAdmin ? 'Todos los grupos' : 'Mis grupos' }}</h2>
+      <p class="subtitle">{{ usuario.nombre_completo }}</p>
     </div>
-    <button class="btn-logout" (click)="cerrarSesion()">Cerrar Sesión</button>
+    <div class="header-botones">
+      @if (esAdmin) {
+        <button class="btn-secundario" routerLink="/admin">Panel de administración</button>
+      }
+      <button class="btn-logout" (click)="cerrarSesion()">Cerrar sesión</button>
+    </div>
   </header>
 
-  <div class="card-main">
-    <div class="info-bar" *ngIf="fechaActualizacion">
-      <span class="badge-update">📅 Última actualización: {{ fechaActualizacion }}</span>
-      <span class="badge-total" *ngIf="alumnos.length > 0">Total de registros: {{ alumnos.length }}</span>
-    </div>
+  @if (cargando) {
+    <p class="status-text">Cargando información...</p>
+  }
+  @if (error) {
+    <p class="error-text">{{ error }}</p>
+  }
 
-    <p *ngIf="cargando" class="status-text">Cargando información...</p>
-    <p *ngIf="error" class="error-text">{{ error }}</p>
+  @if (!cargando && !error) {
 
-    <!-- Tabla con diseño moderno y limpio -->
-    <div class="table-container" *ngIf="!cargando && alumnos.length > 0">
-      <table class="modern-table">
-        <thead>
-          <tr>
-            <th *ngFor="let col of columnas">{{ col }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let row of alumnos; let i = index">
-            <td *ngFor="let col of columnas">
-              {{ row[col] !== undefined && row[col] !== null ? row[col] : '-' }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- Resumen -->
+    <section class="resumen">
+      <div class="resumen-card">
+        <span class="resumen-numero">{{ totalGrupos }}</span>
+        <span class="resumen-texto">Grupos</span>
+      </div>
+      <div class="resumen-card">
+        <span class="resumen-numero">
+          {{ promedioGeneral !== null ? (promedioGeneral | number:'1.1-2') : '—' }}
+        </span>
+        <span class="resumen-texto">Promedio general</span>
+      </div>
+      <div class="resumen-card">
+        <span class="resumen-numero">{{ recurses.length }}</span>
+        <span class="resumen-texto">Grupos de recurse</span>
+      </div>
+    </section>
 
-    <p *ngIf="!cargando && alumnos.length === 0" class="status-text">
-      No hay datos registrados por el administrador todavía.
-    </p>
-  </div>
+    @if (fechaActualizacion) {
+      <p class="actualizacion">📅 Última actualización: {{ fechaActualizacion | date:'dd/MM/yyyy HH:mm' }}</p>
+    }
+
+    <!-- Pestañas -->
+    @if (pestanasCuatri.length > 0 || recurses.length > 0) {
+      <nav class="tabs">
+        @for (p of pestanasCuatri; track p.numero) {
+          <button class="tab" [class.activa]="pestana === p.numero" (click)="pestana = p.numero">
+            {{ p.numero }}° cuatrimestre
+            <span class="contador">{{ p.grupos.length }}</span>
+          </button>
+        }
+        @if (recurses.length > 0) {
+          <button class="tab tab-recurse" [class.activa]="pestana === 'recurses'" (click)="pestana = 'recurses'">
+            Recurses
+            <span class="contador">{{ recurses.length }}</span>
+          </button>
+        }
+      </nav>
+    } @else {
+      <p class="status-text">No hay grupos registrados para ti todavía.</p>
+    }
+
+    <!-- Grupos del cuatrimestre elegido -->
+    @if (pestana !== 'recurses') {
+      <div class="grid">
+        @for (g of gruposActivos; track $index) {
+          <article class="tarjeta">
+            <div class="tarjeta-top">
+              <span class="grupo">{{ g.grupo }}</span>
+              <span class="promedio" [ngClass]="claseProm(g.promedio)">
+                {{ g.promedio !== null ? (g.promedio | number:'1.1-2') : '—' }}
+              </span>
+            </div>
+            <h4>{{ g.asignatura }}</h4>
+            @if (esAdmin) {
+              <p class="docente-nombre">👤 {{ g.docente }}</p>
+            }
+            <ul class="detalles">
+              <li>🕒 {{ g.horario || '-' }}</li>
+              <li>📍 {{ g.espacio || '-' }}</li>
+            </ul>
+          </article>
+        }
+      </div>
+    }
+
+    <!-- Recurses -->
+    @if (pestana === 'recurses') {
+      @if (errorRecurses) {
+        <p class="error-text">{{ errorRecurses }}</p>
+      }
+      <div class="grid">
+        @for (r of recurses; track $index) {
+          <article class="tarjeta tarjeta-recurse">
+            <div class="tarjeta-top">
+              <span class="grupo">{{ r.grupo }}</span>
+              <span class="etiqueta">Recurse</span>
+            </div>
+            @if (esAdmin) {
+              <p class="docente-nombre">👤 {{ r.docente }}</p>
+            }
+            <ul class="detalles">
+              <li>🕒 {{ r.horario || '-' }}</li>
+              <li>📍 {{ r.espacio || '-' }}</li>
+            </ul>
+          </article>
+        }
+      </div>
+    }
+  }
 </div>

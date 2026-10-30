@@ -21,3 +21,12 @@ CREATE TABLE grupos (
     promedio NUMERIC(5,2),
     fecha_subida TIMESTAMP DEFAULT NOW()
 );
+CREATE TABLE recurses (
+    id SERIAL PRIMARY KEY,
+    docente VARCHAR(150),
+    grupo VARCHAR(50),
+    horario VARCHAR(200),
+    espacio VARCHAR(50),
+    alumnos INTEGER,
+    fecha_subida TIMESTAMP DEFAULT NOW()
+);

@@ -11,11 +11,17 @@ import { Router, RouterLink } from '@angular/router';
   styleUrl: './admin.css',
 })
 export class Admin {
+  // Excel de grupos
   archivoSeleccionado: File | null = null;
   mensaje: string = '';
 
+  // Excel de recurses (variables aparte para que no se mezclen)
+  archivoRecurses: File | null = null;
+  mensajeRecurses: string = '';
+
   constructor(private http: HttpClient, private router: Router) {}
 
+  // ---------- Grupos ----------
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
@@ -23,7 +29,7 @@ export class Admin {
     }
   }
 
-    subirExcel(): void {
+  subirExcel(): void {
     if (!this.archivoSeleccionado) {
       this.mensaje = 'Por favor selecciona un archivo primero.';
       return;
@@ -33,7 +39,7 @@ export class Admin {
     formData.append('archivo', this.archivoSeleccionado);
 
     this.http.post<{ mensaje: string; filas: number }>(
-      'http://localhost:3000/upload',   
+      'http://localhost:3000/upload',
       formData
     ).subscribe({
       next: (respuesta) => {
@@ -41,13 +47,44 @@ export class Admin {
       },
       error: (error) => {
         console.error(error);
-        // Muestra el mensaje que manda el servidor, si existe
         this.mensaje = error.error?.error || 'Ocurrió un error al subir el archivo.';
       }
     });
   }
+
+  // ---------- Recurses ----------
+  onRecursesSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.archivoRecurses = input.files[0];
+    }
+  }
+
+  subirRecurses(): void {
+    if (!this.archivoRecurses) {
+      this.mensajeRecurses = 'Por favor selecciona un archivo primero.';
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('archivo', this.archivoRecurses);
+
+    this.http.post<{ mensaje: string; filas: number }>(
+      'http://localhost:3000/upload-recurses',
+      formData
+    ).subscribe({
+      next: (respuesta) => {
+        this.mensajeRecurses = `${respuesta.mensaje} (${respuesta.filas} filas)`;
+      },
+      error: (error) => {
+        console.error(error);
+        this.mensajeRecurses = error.error?.error || 'Ocurrió un error al subir el archivo.';
+      }
+    });
+  }
+
   cerrarSesion(): void {
-  localStorage.removeItem('usuario');
-  this.router.navigate(['/login']);
-}
+    localStorage.removeItem('usuario');
+    this.router.navigate(['/login']);
+  }
 }

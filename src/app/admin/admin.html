@@ -1,18 +1,61 @@
 <div class="admin-container">
+
   <header class="header">
-    <h2>Panel de Administración</h2>
-    <button class="btn-logout" (click)="cerrarSesion()">Cerrar Sesión</button>
+    <div class="header-titles">
+      <h2>Panel de administración</h2>
+      <p class="header-sub">Sube los Excel que verán los docentes</p>
+    </div>
+    <div class="header-botones">
+      <button class="btn-secundario" routerLink="/docente">Ver vista de docente</button>
+      <button class="btn-logout" (click)="cerrarSesion()">Cerrar sesión</button>
+    </div>
   </header>
 
-  <div class="card">
-    <h3>Importar Excel de Alumnos</h3>
-    <p class="subtitle">Selecciona el archivo Excel con los datos que visualizarán los docentes.</p>
+  <div class="cards">
 
-    <div class="upload-section">
-      <input type="file" (change)="onFileSelected($event)" id="fileInput" class="file-input" />
-      <button class="btn-primary" (click)="subirExcel()">Subir Excel</button>
-    </div>
+    <!-- Excel de grupos -->
+    <section class="card card-grupos">
+      <div class="card-icono">📚</div>
+      <h3>Grupos</h3>
+      <p class="subtitle">Excel con los grupos, horarios y promedios de cada docente. Debe tener una hoja llamada <strong>GRUPOS</strong>.</p>
 
-    <p *ngIf="mensaje" class="mensaje-alerta">{{ mensaje }}</p>
+      <label class="dropzone" for="fileInput" [class.con-archivo]="archivoSeleccionado">
+        <span class="dropzone-icono">{{ archivoSeleccionado ? '✅' : '📄' }}</span>
+        <span class="dropzone-texto">
+          {{ archivoSeleccionado ? archivoSeleccionado.name : 'Haz clic para elegir un archivo Excel' }}
+        </span>
+      </label>
+      <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" (change)="onFileSelected($event)" />
+
+      <button class="btn-primary" (click)="subirExcel()" [disabled]="!archivoSeleccionado">Subir grupos</button>
+
+      @if (mensaje) {
+        <p class="mensaje" [class.ok]="mensaje.includes('correctamente')" [class.error]="!mensaje.includes('correctamente')">{{ mensaje }}</p>
+      }
+    </section>
+
+    <!-- Excel de recurses -->
+    <section class="card card-recurses">
+      <div class="card-icono">🔁</div>
+      <h3>Recurses</h3>
+      <p class="subtitle">Excel de alumnos en recurse. Solo se guardan docente, grupo, horario y espacio.</p>
+
+      <label class="dropzone" for="fileInputRecurses" [class.con-archivo]="archivoRecurses">
+        <span class="dropzone-icono">{{ archivoRecurses ? '✅' : '📄' }}</span>
+        <span class="dropzone-texto">
+          {{ archivoRecurses ? archivoRecurses.name : 'Haz clic para elegir un archivo Excel' }}
+        </span>
+      </label>
+      <input type="file" id="fileInputRecurses" class="file-input" accept=".xlsx,.xls" (change)="onRecursesSelected($event)" />
+
+      <button class="btn-primary btn-verde" (click)="subirRecurses()" [disabled]="!archivoRecurses">Subir recurses</button>
+
+      @if (mensajeRecurses) {
+        <p class="mensaje" [class.ok]="mensajeRecurses.includes('correctamente')" [class.error]="!mensajeRecurses.includes('correctamente')">{{ mensajeRecurses }}</p>
+      }
+    </section>
+
   </div>
+
+  <p class="nota">Cada archivo que subes reemplaza al anterior.</p>
 </div>
