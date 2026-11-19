@@ -1,30 +1,37 @@
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const XLSX = require('xlsx');
 
-const app = express();
-const PORT = 3000;
-console.log('>>> index.js de server con grupos, recurses y admin estático <<<');
+if (!process.env.JWT_SECRET) {
+    console.error('Falta JWT_SECRET en el archivo .env');
+    process.exit(1);
+}
 
-app.use(cors());
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:4200' }));
 app.use(express.json());
 
-// multer guarda el archivo en memoria (no en disco)
-const upload = multer({ storage: multer.memoryStorage() });
+// Archivos en memoria, máximo 10 MB
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const pool = new Pool({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'At-ingles',
-    password: process.env.DB_PASSWORD || 'root',
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
     port: Number(process.env.DB_PORT) || 5432,
 });
 
 pool.connect()
-    .then(() => console.log('Conexión exitosa a la base de datos PostgreSQL: At-ingles'))
+    .then(() => console.log('Conexión exitosa a la base de datos PostgreSQL'))
     .catch(err => console.error('Error al conectar a la base de datos:', err));
 
 // ---------- Funciones auxiliares ----------
@@ -44,36 +51,72 @@ function normalizar(nombre) {
         .split(/\s+/).filter(Boolean).sort().join(' ');
 }
 
-// Convierte un texto a una clave comparable: sin acentos, sin espacios ni símbolos, en mayúsculas
-function claveTexto(texto) {
-    return String(texto)
-        .toUpperCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^A-Z0-9]/g, '');
+// ---------- Seguridad ----------
+
+// Exige un token válido. El usuario sale del token, no de lo que mande el navegador.
+function verificarToken(req, res, next) {
+    const cabecera = req.headers.authorization || '';
+    const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : null;
+    if (!token) {
+        return res.status(401).json({ error: 'Debes iniciar sesión.' });
+    }
+    try {
+        req.usuario = jwt.verify(token, process.env.JWT_SECRET);
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Tu sesión expiró. Inicia sesión de nuevo.' });
+    }
+}
+
+// Solo deja pasar al admin
+function soloAdmin(req, res, next) {
+    if (req.usuario.rol !== 'admin') {
+        return res.status(403).json({ error: 'No tienes permiso para esta acción.' });
+    }
+    next();
+}
+
+// Máximo 10 intentos fallidos cada 15 minutos por IP
+const limitarLogin = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.' }
+});
+
+// Filtra por docente; si es admin y no se fuerza soloMios, devuelve todo
+async function filtrarPorDocente(idUsuario, filas, forzarPropios = false) {
+    const u = await pool.query('SELECT nombre_completo, rol FROM usuarios WHERE id = $1', [idUsuario]);
+    if (u.rows.length === 0) return null;
+    if (u.rows[0].rol === 'admin' && !forzarPropios) return filas;
+    const mio = normalizar(u.rows[0].nombre_completo);
+    return filas.filter(f => normalizar(f.docente) === mio);
 }
 
 // ---------- Usuarios ----------
 
-app.post('/api/register', async (req, res) => {
+// Registro cerrado: solo el admin puede crear cuentas
+app.post('/api/register', verificarToken, soloAdmin, async (req, res) => {
     try {
         const { nombre_completo, numero_empleado, contrasena } = req.body;
 
         if (!nombre_completo || nombre_completo.trim().length < 3) {
-            return res.status(400).json({ error: 'Por favor ingresa tu nombre completo válido.' });
+            return res.status(400).json({ error: 'Por favor ingresa un nombre completo válido.' });
         }
         if (!numero_empleado || numero_empleado.trim() === '') {
             return res.status(400).json({ error: 'El número de empleado es obligatorio.' });
         }
         if (!contrasena || contrasena.length !== 4) {
-            return res.status(400).json({ error: 'La contraseña debe ser de exactamente 4 caracteres (primeras letras de tu CURP).' });
+            return res.status(400).json({ error: 'La contraseña debe ser de exactamente 4 caracteres.' });
         }
 
-        const userExists = await pool.query('SELECT * FROM usuarios WHERE numero_empleado = $1', [numero_empleado]);
+        const userExists = await pool.query('SELECT 1 FROM usuarios WHERE numero_empleado = $1', [numero_empleado]);
         if (userExists.rows.length > 0) {
             return res.status(400).json({ error: 'El número de empleado ya está registrado.' });
         }
 
-        // La contraseña se guarda en mayúsculas, igual que las del script de docentes
         const hashedPassword = await bcrypt.hash(contrasena.toUpperCase(), 10);
 
         const nuevoUsuario = await pool.query(
@@ -81,35 +124,19 @@ app.post('/api/register', async (req, res) => {
             [nombre_completo, numero_empleado, hashedPassword]
         );
 
-        res.status(201).json({
-            mensaje: 'Usuario registrado exitosamente',
-            usuario: nuevoUsuario.rows[0]
-        });
+        res.status(201).json({ mensaje: 'Usuario registrado exitosamente', usuario: nuevoUsuario.rows[0] });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error en el servidor al registrar el usuario.' });
     }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', limitarLogin, async (req, res) => {
     try {
         const { numero_empleado, contrasena } = req.body;
 
         if (!numero_empleado || !contrasena) {
             return res.status(400).json({ error: 'Todos los campos son obligatorios.' });
-        }
-
-        // Validación estática del Administrador General (1111 / admin)
-        if (numero_empleado === '1111' && contrasena === 'admin') {
-            return res.json({
-                mensaje: 'Inicio de sesión exitoso',
-                usuario: {
-                    id: 0,
-                    nombre_completo: 'Administrador General',
-                    numero_empleado: '1111',
-                    rol: 'admin'
-                }
-            });
         }
 
         const resultado = await pool.query('SELECT * FROM usuarios WHERE numero_empleado = $1', [numero_empleado]);
@@ -128,8 +155,16 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ error: 'Número de empleado o contraseña incorrectos.' });
         }
 
+        // Token de sesión: dura 8 horas
+        const token = jwt.sign(
+            { id: usuario.id, rol: usuario.rol },
+            process.env.JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
         res.json({
             mensaje: 'Inicio de sesión exitoso',
+            token,
             usuario: {
                 id: usuario.id,
                 nombre_completo: usuario.nombre_completo,
@@ -144,115 +179,65 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ---------- Excel de grupos ----------
-// Lee la hoja GRUPOS y llena la tabla "grupos". Los encabezados del Excel se
-// emparejan automáticamente con las columnas de la tabla (sin importar acentos,
-// mayúsculas, espacios o guiones bajos). Ejemplo: "Promedio General" -> promedio_general.
 
-app.post('/upload', upload.single('archivo'), async (req, res) => {
+app.post('/upload', verificarToken, soloAdmin, upload.single('archivo'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No se recibió ningún archivo.' });
         }
 
         const libro = XLSX.read(req.file.buffer, { type: 'buffer' });
-
-        const nombreHoja = libro.SheetNames.find(n => n.trim().toUpperCase() === 'GRUPOS');
-        if (!nombreHoja) {
-            return res.status(400).json({
-                error: 'El Excel debe tener una hoja llamada GRUPOS.',
-                hojasEncontradas: libro.SheetNames
-            });
+        const hoja = libro.Sheets['GRUPOS'];
+        if (!hoja) {
+            return res.status(400).json({ error: 'El Excel no tiene una hoja llamada GRUPOS.' });
         }
 
-        // Filas como arreglos para leer por posición
-        const matriz = XLSX.utils.sheet_to_json(libro.Sheets[nombreHoja], { header: 1, defval: '' });
+        const filas = XLSX.utils.sheet_to_json(hoja, { defval: '' });
 
-        // Detecta la fila de encabezados (la primera, entre las 10 primeras, que mencione al docente)
-        const idxEnc = matriz.findIndex((fila, i) =>
-            i < 10 && fila.some(c => /DOCENTE|PROFESOR|MAESTRO/.test(claveTexto(c)))
-        );
-        if (idxEnc === -1) {
-            return res.status(400).json({
-                error: 'No encontré la fila de encabezados (debe existir una columna de docente).'
-            });
-        }
+        const grupos = filas
+            .map(f => {
+                const prom = parseFloat(col(f, 'PROMEDIO'));
+                return {
+                    grupo: String(col(f, 'GRUPO')).trim(),
+                    docente: String(col(f, 'DOCENTE')).trim(),
+                    horario: String(col(f, 'HORARIO')).trim(),
+                    espacio: String(col(f, 'ESPACIO')).trim(),
+                    asignatura: String(col(f, 'ASIGNATURA')).trim(),
+                    promedio: isNaN(prom) ? null : prom
+                };
+            })
+            .filter(g => g.grupo && g.docente)
+            // Quita filas repetidas (mismo grupo, docente, horario y asignatura)
+            .filter((g, i, lista) =>
+                i === lista.findIndex(x =>
+                    x.grupo === g.grupo && x.docente === g.docente &&
+                    x.horario === g.horario && x.asignatura === g.asignatura));
 
-        const encabezados = matriz[idxEnc].map(c => String(c).trim());
-        const filas = matriz.slice(idxEnc + 1);
-
-        // Columnas reales de la tabla grupos
-        const info = await pool.query(
-            `SELECT column_name FROM information_schema.columns
-             WHERE table_schema = 'public' AND table_name = 'grupos'
-             ORDER BY ordinal_position`
-        );
-        const columnasTabla = info.rows.map(r => r.column_name);
-        if (columnasTabla.length === 0) {
-            return res.status(500).json({ error: 'La tabla "grupos" no existe en la base de datos.' });
-        }
-
-        const tieneFecha = columnasTabla.includes('fecha_subida');
-        const columnasDatos = columnasTabla.filter(c => c !== 'id' && c !== 'fecha_subida');
-
-        // Empareja cada columna de la tabla con un encabezado del Excel
-        const indiceDe = {};
-        const sinCoincidencia = [];
-        for (const c of columnasDatos) {
-            const k = claveTexto(c);
-            let idx = encabezados.findIndex(h => claveTexto(h) === k);
-            if (idx === -1) {
-                idx = encabezados.findIndex(h => {
-                    const kh = claveTexto(h);
-                    return kh && (kh.includes(k) || k.includes(kh));
-                });
-            }
-            if (idx === -1) sinCoincidencia.push(c);
-            else indiceDe[c] = idx;
-        }
-
-        if (indiceDe['docente'] === undefined) {
-            return res.status(400).json({
-                error: 'No pude emparejar la columna "docente" de la tabla con ningún encabezado del Excel.',
-                encabezadosDelExcel: encabezados,
-                columnasDeLaTabla: columnasDatos
-            });
-        }
-
-        // Arma los registros
-        const registros = [];
-        for (const f of filas) {
-            const valores = {};
-            for (const c of columnasDatos) {
-                if (indiceDe[c] === undefined) {
-                    valores[c] = null;
-                } else {
-                    const v = String(f[indiceDe[c]] ?? '').trim();
-                    valores[c] = v === '' ? null : v;
-                }
-            }
-            if (!valores['docente']) continue;             // sin docente -> se omite
-            if ('grupo' in valores && !valores['grupo']) continue; // sin grupo -> se omite
-            registros.push(valores);
-        }
-
-        if (registros.length === 0) {
-            return res.status(400).json({ error: 'No se encontraron filas válidas en la hoja GRUPOS.' });
-        }
-
-        // Inserta todo en una transacción (reemplaza lo anterior)
-        const listaCols = [...columnasDatos, ...(tieneFecha ? ['fecha_subida'] : [])];
-        const nombresSql = listaCols.map(c => `"${c}"`).join(', ');
-        const marcadores = columnasDatos.map((_, i) => `$${i + 1}`);
-        if (tieneFecha) marcadores.push('NOW()');
-        const sql = `INSERT INTO grupos (${nombresSql}) VALUES (${marcadores.join(', ')})`;
-
+        // Reemplaza los datos anteriores por los nuevos en lotes de 500 (todo o nada)
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
             await client.query('DELETE FROM grupos');
-            for (const r of registros) {
-                await client.query(sql, columnasDatos.map(c => r[c]));
+
+            const batchSize = 500;
+            for (let i = 0; i < grupos.length; i += batchSize) {
+                const lote = grupos.slice(i, i + batchSize);
+                const placeholders = [];
+                const params = [];
+                let idx = 1;
+
+                for (const g of lote) {
+                    params.push(g.grupo, g.docente, g.horario, g.espacio, g.asignatura, g.promedio);
+                    placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+                }
+
+                await client.query(
+                    `INSERT INTO grupos (grupo, docente, horario, espacio, asignatura, promedio)
+                     VALUES ${placeholders.join(', ')}`,
+                    params
+                );
             }
+
             await client.query('COMMIT');
         } catch (e) {
             await client.query('ROLLBACK');
@@ -261,35 +246,20 @@ app.post('/upload', upload.single('archivo'), async (req, res) => {
             client.release();
         }
 
-        res.json({
-            mensaje: 'Grupos subidos correctamente',
-            filas: registros.length,
-            columnasSinCoincidencia: sinCoincidencia
-        });
+        res.json({ mensaje: 'Archivo subido correctamente', filas: grupos.length });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Error al procesar el archivo.', detalle: error.message });
+        res.status(500).json({ error: 'Error al procesar el archivo.' });
     }
 });
 
-app.get('/datos', async (req, res) => {
+app.get('/datos', verificarToken, async (req, res) => {
     try {
-        const { numero_empleado } = req.query;
+        const soloMios = req.query.soloMios === '1';
         const todos = await pool.query('SELECT * FROM grupos ORDER BY grupo');
-        let filas = todos.rows;
-
-        if (numero_empleado && numero_empleado !== '1111') {
-            const u = await pool.query(
-                'SELECT nombre_completo, rol FROM usuarios WHERE numero_empleado = $1',
-                [numero_empleado]
-            );
-            if (u.rows.length === 0) {
-                return res.status(404).json({ error: 'Usuario no encontrado.' });
-            }
-            if (u.rows[0].rol !== 'admin') {
-                const mio = normalizar(u.rows[0].nombre_completo);
-                filas = filas.filter(g => normalizar(g.docente) === mio);
-            }
+        const filas = await filtrarPorDocente(req.usuario.id, todos.rows, soloMios);
+        if (filas === null) {
+            return res.status(401).json({ error: 'Usuario no encontrado.' });
         }
 
         res.json({
@@ -304,7 +274,7 @@ app.get('/datos', async (req, res) => {
 
 // ---------- Excel de recurses ----------
 
-app.post('/upload-recurses', upload.single('archivo'), async (req, res) => {
+app.post('/upload-recurses', verificarToken, soloAdmin, upload.single('archivo'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No se recibió ningún archivo.' });
@@ -313,22 +283,22 @@ app.post('/upload-recurses', upload.single('archivo'), async (req, res) => {
         const libro = XLSX.read(req.file.buffer, { type: 'buffer' });
         const hoja = libro.Sheets[libro.SheetNames[0]];
 
-        // header: 1 -> filas como arreglos (se leen por POSICIÓN, porque el Excel
-        // repite encabezados como "GRUPO CI"). Las filas 1 y 2 son encabezados.
+        // Se leen por POSICIÓN porque el Excel repite encabezados. Las filas 1 y 2 son encabezados.
         const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' }).slice(2);
 
-        // Junta los alumnos que comparten docente + grupo + horario
+        // Una fila por cada docente + grupo + horario (sin repetir)
         const mapa = new Map();
         for (const f of filas) {
-            const docente = String(f[21] || '').trim();   // PROFESOR DE RECURSE PRESENCIAL
-            const grupo = String(f[18] || '').trim();     // segundo "GRUPO CI"
-            const horario = String(f[17] || '').trim();   // HORARIO
-            const espacio = String(f[16] || '').trim();   // ESPACIO EDUCATIVO
+            const docente = String(f[21]).trim();   // PROFESOR DE RECURSE PRESENCIAL
+            const grupo = String(f[18]).trim();     // segundo "GRUPO CI"
+            const horario = String(f[17]).trim();   // HORARIO
+            const espacio = String(f[16]).trim();   // ESPACIO EDUCATIVO
             if (!docente || !grupo) continue;
 
             const clave = `${docente}|${grupo}|${horario}`;
-            if (mapa.has(clave)) mapa.get(clave).alumnos++;
-            else mapa.set(clave, { docente, grupo, horario, espacio, alumnos: 1 });
+            if (!mapa.has(clave)) {
+                mapa.set(clave, { docente, grupo, horario, espacio });
+            }
         }
         const recurses = [...mapa.values()];
 
@@ -336,13 +306,26 @@ app.post('/upload-recurses', upload.single('archivo'), async (req, res) => {
         try {
             await client.query('BEGIN');
             await client.query('DELETE FROM recurses');
-            for (const r of recurses) {
+
+            const batchSize = 500;
+            for (let i = 0; i < recurses.length; i += batchSize) {
+                const lote = recurses.slice(i, i + batchSize);
+                const placeholders = [];
+                const params = [];
+                let idx = 1;
+
+                for (const r of lote) {
+                    params.push(r.docente, r.grupo, r.horario, r.espacio);
+                    placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+                }
+
                 await client.query(
-                    `INSERT INTO recurses (docente, grupo, horario, espacio, alumnos)
-                     VALUES ($1,$2,$3,$4,$5)`,
-                    [r.docente, r.grupo, r.horario, r.espacio, r.alumnos]
+                    `INSERT INTO recurses (docente, grupo, horario, espacio)
+                     VALUES ${placeholders.join(', ')}`,
+                    params
                 );
             }
+
             await client.query('COMMIT');
         } catch (e) {
             await client.query('ROLLBACK');
@@ -358,24 +341,13 @@ app.post('/upload-recurses', upload.single('archivo'), async (req, res) => {
     }
 });
 
-app.get('/recurses', async (req, res) => {
+app.get('/recurses', verificarToken, async (req, res) => {
     try {
-        const { numero_empleado } = req.query;
+        const soloMios = req.query.soloMios === '1';
         const todos = await pool.query('SELECT * FROM recurses ORDER BY docente, grupo');
-        let filas = todos.rows;
-
-        if (numero_empleado && numero_empleado !== '1111') {
-            const u = await pool.query(
-                'SELECT nombre_completo, rol FROM usuarios WHERE numero_empleado = $1',
-                [numero_empleado]
-            );
-            if (u.rows.length === 0) {
-                return res.status(404).json({ error: 'Usuario no encontrado.' });
-            }
-            if (u.rows[0].rol !== 'admin') {
-                const mio = normalizar(u.rows[0].nombre_completo);
-                filas = filas.filter(r => normalizar(r.docente) === mio);
-            }
+        const filas = await filtrarPorDocente(req.usuario.id, todos.rows, soloMios);
+        if (filas === null) {
+            return res.status(401).json({ error: 'Usuario no encontrado.' });
         }
 
         res.json({

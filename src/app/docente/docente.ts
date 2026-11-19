@@ -65,18 +65,85 @@ export class Docente implements OnInit {
     return m ? Number(m[1]) : null;
   }
 
+  private limpiarTexto(v: any): string {
+    return String(v ?? '').trim().replace(/\s+/g, ' ');
+  }
+
+  private deduplicarGrupos(lista: Grupo[]): Grupo[] {
+    const vistos = new Set<string>();
+    const unicos: Grupo[] = [];
+
+    for (const g of lista) {
+      const grupo = this.limpiarTexto(g.grupo);
+      const docente = this.limpiarTexto(g.docente);
+      const horario = this.limpiarTexto(g.horario);
+      const espacio = this.limpiarTexto(g.espacio);
+      const asignatura = this.limpiarTexto(g.asignatura);
+      const promNum = g.promedio !== null && g.promedio !== undefined && String(g.promedio) !== ''
+        ? Number(g.promedio)
+        : null;
+      const promedio = promNum !== null && !Number.isNaN(promNum) ? promNum : null;
+
+      const clave = [
+        grupo.toUpperCase(),
+        docente.toUpperCase(),
+        asignatura.toUpperCase(),
+        horario.toUpperCase(),
+        espacio.toUpperCase(),
+        promedio ?? ''
+      ].join('|');
+
+      if (!vistos.has(clave)) {
+        vistos.add(clave);
+        unicos.push({
+          grupo,
+          docente,
+          horario,
+          espacio,
+          asignatura,
+          promedio
+        });
+      }
+    }
+
+    return unicos.sort((a, b) => a.grupo.localeCompare(b.grupo, 'es', { numeric: true }));
+  }
+
+  private deduplicarRecurses(lista: Recurse[]): Recurse[] {
+    const vistos = new Set<string>();
+    const unicos: Recurse[] = [];
+
+    for (const r of lista) {
+      const docente = this.limpiarTexto(r.docente);
+      const grupo = this.limpiarTexto(r.grupo);
+      const horario = this.limpiarTexto(r.horario);
+      const espacio = this.limpiarTexto(r.espacio);
+
+      const clave = [
+        docente.toUpperCase(),
+        grupo.toUpperCase(),
+        horario.toUpperCase(),
+        espacio.toUpperCase()
+      ].join('|');
+
+      if (!vistos.has(clave)) {
+        vistos.add(clave);
+        unicos.push({ docente, grupo, horario, espacio });
+      }
+    }
+
+    return unicos.sort((a, b) => a.grupo.localeCompare(b.grupo, 'es', { numeric: true }));
+  }
+
   cargarDatos(): void {
     this.cargando = true;
+    const soloMiosParam = this.esAdmin ? '&soloMios=1' : '';
 
     this.http.get<any>(
-      `http://localhost:3000/datos?numero_empleado=${this.usuario.numero_empleado}`
+      `http://localhost:3000/datos?numero_empleado=${this.usuario.numero_empleado}${soloMiosParam}`
     ).subscribe({
       next: (respuesta) => {
-        // PostgreSQL manda el promedio como texto: lo pasamos a número
-        this.grupos = (respuesta.filas || []).map((g: any) => ({
-          ...g,
-          promedio: g.promedio !== null && g.promedio !== '' ? Number(g.promedio) : null,
-        }));
+        this.grupos = this.deduplicarGrupos(respuesta.filas || []);
         this.fechaActualizacion = respuesta.fechaSubida || '';
 
         this.pestanasCuatri = this.CUATRIS
@@ -97,11 +164,13 @@ export class Docente implements OnInit {
   }
 
   cargarRecurses(): void {
+    const soloMiosParam = this.esAdmin ? '&soloMios=1' : '';
+
     this.http.get<any>(
-      `http://localhost:3000/recurses?numero_empleado=${this.usuario.numero_empleado}`
+      `http://localhost:3000/recurses?numero_empleado=${this.usuario.numero_empleado}${soloMiosParam}`
     ).subscribe({
       next: (respuesta) => {
-        this.recurses = respuesta.filas || [];
+        this.recurses = this.deduplicarRecurses(respuesta.filas || []);
         if (!this.cargando) this.ajustarPestana();
         this.cdr.detectChanges();
       },
@@ -148,6 +217,7 @@ export class Docente implements OnInit {
   }
 
   cerrarSesion(): void {
+    localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     this.router.navigate(['/login']);
   }

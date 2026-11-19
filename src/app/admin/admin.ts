@@ -84,6 +84,7 @@ export class Admin {
   }
 
   cerrarSesion(): void {
+    localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     this.router.navigate(['/login']);
   }

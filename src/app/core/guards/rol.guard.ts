@@ -6,11 +6,19 @@ export function rolGuard(rolesPermitidos: string[]): CanActivateFn {
   return () => {
     const router = inject(Router);
 
-    // El usuario se guardó en localStorage al iniciar sesión
-    const usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+    const token = localStorage.getItem('token');
+    let usuario: { rol?: string } | null = null;
 
-    // Sin sesión: manda al login
-    if (!usuario) {
+    try {
+      usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+    } catch {
+      usuario = null;
+    }
+
+    // Sin sesión o sin token: limpia y manda al login
+    if (!token || !usuario || !usuario.rol) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('usuario');
       router.navigate(['/login']);
       return false;
     }

@@ -1,13 +1,13 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms'; 
-import { HttpClient } from '@angular/common/http'; 
+import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule], 
+  imports: [CommonModule, FormsModule],
   templateUrl: './login.html',
   styleUrls: ['./login.css']
 })
@@ -64,13 +64,12 @@ export class LoginComponent {
         this.isLoginMode = true; // Cambia automáticamente al panel de login
       },
       error: (err) => {
-        alert(err.error.error || 'Ocurrió un error al registrarse');
+        alert(err.error?.error || 'Ocurrió un error al registrarse');
       }
     });
   }
 
   // Función para iniciar sesión
-    
   onLogin() {
     if (!this.loginData.numero_empleado || !this.loginData.contrasena) {
       alert('⚠️ Todos los campos son obligatorios para iniciar sesión.');
@@ -82,7 +81,10 @@ export class LoginComponent {
         alert('¡Bienvenido, ' + response.usuario.nombre_completo + '!');
         console.log(response);
 
-        // Guarda la sesión: el guard y la vista de docente la leen de aquí
+        // Guarda el token y la sesión en localStorage
+        if (response.token) {
+          localStorage.setItem('token', response.token);
+        }
         localStorage.setItem('usuario', JSON.stringify(response.usuario));
 
         // Redirige según el rol que manda el backend
@@ -93,9 +95,8 @@ export class LoginComponent {
         }
       },
       error: (err) => {
-        alert(err.error.error || 'Credenciales incorrectas');
+        alert(err.error?.error || 'Credenciales incorrectas');
       }
     });
   }
-
 }
