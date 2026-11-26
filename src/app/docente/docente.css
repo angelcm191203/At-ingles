@@ -120,6 +120,8 @@ button { font-family: inherit; }
   padding: 18px;
   border-top: 4px solid var(--azul);
   box-shadow: 0 4px 14px rgba(15, 39, 71, 0.08);
+  display: flex;
+  flex-direction: column;
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .tarjeta:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(15, 39, 71, 0.14); }
@@ -140,6 +142,46 @@ button { font-family: inherit; }
   font-size: 0.9rem;
 }
 .detalles li { overflow-wrap: anywhere; }
+
+/* Apartado inferior: Descargar listas */
+.tarjeta-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  margin-top: 14px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-descargar-lista {
+  border: 1px solid rgba(15, 39, 71, 0.18);
+  background: var(--fondo);
+  color: var(--azul);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.btn-descargar-lista:hover:not(:disabled) {
+  background: var(--azul);
+  border-color: var(--azul);
+  color: #fff;
+}
+.tarjeta-recurse .btn-descargar-lista {
+  border-color: rgba(10, 125, 63, 0.25);
+  color: var(--verde);
+}
+.tarjeta-recurse .btn-descargar-lista:hover:not(:disabled) {
+  background: var(--verde);
+  border-color: var(--verde);
+  color: #fff;
+}
+.btn-descargar-lista:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 /* Promedio con color */
 .promedio {

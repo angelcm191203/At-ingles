@@ -1,7 +1,9 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Grupo {
   grupo: string;
@@ -24,6 +26,13 @@ interface PestanaCuatri {
   grupos: Grupo[];
 }
 
+interface AlumnoLista {
+  nombre: string;
+  matricula: string;
+  division: string;
+  carrera: string;
+}
+
 @Component({
   selector: 'app-docente',
   standalone: true,
@@ -32,18 +41,20 @@ interface PestanaCuatri {
   styleUrl: './docente.css',
 })
 export class Docente implements OnInit {
-  // Cuatrimestres que se muestran (6 y 11 son estadías y no entran)
   private readonly CUATRIS = [1, 2, 3, 4, 5, 7, 8, 9, 10];
 
   grupos: Grupo[] = [];
   recurses: Recurse[] = [];
   pestanasCuatri: PestanaCuatri[] = [];
-  pestana: number | 'recurses' = 1;   // pestaña seleccionada
+  pestana: number | 'recurses' = 1;
 
   fechaActualizacion: string = '';
   cargando: boolean = true;
   error: string = '';
   errorRecurses: string = '';
+
+  descargandoGrupo: string = '';
+  errorDescarga: string = '';
 
   usuario = JSON.parse(localStorage.getItem('usuario') || '{}');
   esAdmin: boolean = this.usuario.rol === 'admin';
@@ -59,7 +70,6 @@ export class Docente implements OnInit {
     this.cargarRecurses();
   }
 
-  // "10IN24" -> 10, "2IN2" -> 2, "RECURSE INGLÉS I" -> null
   private cuatriDe(grupo: string): number | null {
     const m = /^(\d+)/.exec(String(grupo).trim());
     return m ? Number(m[1]) : null;
@@ -182,7 +192,6 @@ export class Docente implements OnInit {
     });
   }
 
-  // Si la pestaña elegida no existe para este docente, se pasa a la primera con datos
   private ajustarPestana(): void {
     const hayCuatri = this.pestanasCuatri.some(p => p.numero === this.pestana);
     const hayRecurses = this.pestana === 'recurses' && this.recurses.length > 0;
@@ -208,12 +217,96 @@ export class Docente implements OnInit {
     return con.reduce((suma, g) => suma + g.promedio, 0) / con.length;
   }
 
-  // Color del promedio
   claseProm(p: number | null): string {
     if (p === null) return 'sin';
     if (p >= 8) return 'alto';
     if (p >= 7) return 'medio';
     return 'bajo';
+  }
+
+  descargarListaPdf(grupoClave: string, infoExtra?: { asignatura?: string; docente?: string; horario?: string; espacio?: string }): void {
+    const claveLimpia = this.limpiarTexto(grupoClave);
+    if (!claveLimpia || this.descargandoGrupo) return;
+
+    this.errorDescarga = '';
+    this.descargandoGrupo = claveLimpia;
+    this.cdr.detectChanges();
+
+    const token = localStorage.getItem('token') || '';
+    const headers = token ? new HttpHeaders({ Authorization: `Bearer ${token}` }) : undefined;
+
+    this.http.get<any>(
+      `http://localhost:3000/lista-grupo/${encodeURIComponent(claveLimpia)}`,
+      { headers }
+    ).subscribe({
+      next: (resp) => {
+        try {
+          const alumnos: AlumnoLista[] = (Array.isArray(resp?.alumnos) ? resp.alumnos : [])
+            .slice()
+            .sort((a: AlumnoLista, b: AlumnoLista) =>
+              (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
+            );
+
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(13);
+          doc.text('Coordinación de Inglés — Lista de Alumnos', 14, 16);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          doc.text(`Grupo: ${claveLimpia}`, 14, 22);
+
+          let detalleY = 27;
+          if (infoExtra?.asignatura) {
+            doc.text(`Asignatura: ${infoExtra.asignatura}`, 14, detalleY);
+            detalleY += 5;
+          }
+          if (infoExtra?.docente) {
+            doc.text(`Docente: ${infoExtra.docente}`, 14, detalleY);
+            detalleY += 5;
+          }
+          if (infoExtra?.horario || infoExtra?.espacio) {
+            doc.text(
+              `Horario: ${infoExtra?.horario || '-'}   |   Espacio: ${infoExtra?.espacio || '-'}`,
+              14,
+              detalleY
+            );
+            detalleY += 5;
+          }
+
+          doc.text(`Total de alumnos: ${alumnos.length}`, 14, detalleY);
+
+          autoTable(doc, {
+            startY: detalleY + 4,
+            head: [['#', 'Nombre del Alumno', 'Matrícula', 'División', 'Carrera']],
+            body: alumnos.map((a, i) => [
+              String(i + 1),
+              a.nombre || '-',
+              a.matricula || '-',
+              a.division || '-',
+              a.carrera || '-'
+            ]),
+            styles: { fontSize: 9, cellPadding: 2 },
+            headStyles: { fillColor: [22, 101, 52] }
+          });
+
+          doc.save(`lista_${claveLimpia}.pdf`);
+        } catch (err) {
+          console.error('Error al generar el PDF:', err);
+          this.errorDescarga = 'No se pudo generar el PDF de la lista.';
+        } finally {
+          this.descargandoGrupo = '';
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err) => {
+        console.error('Error al obtener la lista del grupo:', err);
+        this.errorDescarga = err.error?.error || 'No se pudo obtener la lista del grupo.';
+        this.descargandoGrupo = '';
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   cerrarSesion(): void {

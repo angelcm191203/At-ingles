@@ -19,6 +19,9 @@
   @if (error) {
     <p class="error-text">{{ error }}</p>
   }
+  @if (errorDescarga) {
+    <p class="error-text">{{ errorDescarga }}</p>
+  }
 
   @if (!cargando && !error) {
 
@@ -83,6 +86,15 @@
               <li>🕒 {{ g.horario || '-' }}</li>
               <li>📍 {{ g.espacio || '-' }}</li>
             </ul>
+            <div class="tarjeta-footer">
+              <button
+                type="button"
+                class="btn-descargar-lista"
+                [disabled]="descargandoGrupo === g.grupo"
+                (click)="descargarListaPdf(g.grupo, { asignatura: g.asignatura, docente: g.docente, horario: g.horario, espacio: g.espacio })">
+                {{ descargandoGrupo === g.grupo ? 'Generando PDF...' : 'Descargar listas' }}
+              </button>
+            </div>
           </article>
         }
       </div>
@@ -107,6 +119,15 @@
               <li>🕒 {{ r.horario || '-' }}</li>
               <li>📍 {{ r.espacio || '-' }}</li>
             </ul>
+            <div class="tarjeta-footer">
+              <button
+                type="button"
+                class="btn-descargar-lista"
+                [disabled]="descargandoGrupo === r.grupo"
+                (click)="descargarListaPdf(r.grupo, { docente: r.docente, horario: r.horario, espacio: r.espacio })">
+                {{ descargandoGrupo === r.grupo ? 'Generando PDF...' : 'Descargar listas' }}
+              </button>
+            </div>
           </article>
         }
       </div>

@@ -34,7 +34,14 @@ pool.connect()
     .then(() => console.log('Conexión exitosa a la base de datos PostgreSQL'))
     .catch(err => console.error('Error al conectar a la base de datos:', err));
 
+// Almacén en memoria por carga (no se persiste en PostgreSQL)
+let listasPorGrupo = new Map();
+
 // ---------- Funciones auxiliares ----------
+
+function normalizarClaveGrupo(valor) {
+    return String(valor ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
 
 // Busca el valor de una columna cuyo encabezado EMPIECE con cierto texto
 function col(fila, inicio) {
@@ -51,9 +58,128 @@ function normalizar(nombre) {
         .split(/\s+/).filter(Boolean).sort().join(' ');
 }
 
+// Extrae y agrupa alumnos por clave de grupo desde el libro de Excel en memoria
+function extraerListasPorGrupo(libro) {
+    const mapaAlumnos = new Map();
+
+    // 1. Mapa de carrera por matrícula desde PIUTTEC
+    const carreraPorMatricula = new Map();
+    const hojaPiuttec = libro.Sheets['PIUTTEC'];
+    if (hojaPiuttec) {
+        const filasPiuttec = XLSX.utils.sheet_to_json(hojaPiuttec, { header: 1, defval: '' });
+        let filaEncP = -1;
+        let idxMatP = -1;
+        let idxCarP = -1;
+
+        for (let r = 0; r < Math.min(filasPiuttec.length, 10); r++) {
+            const enc = filasPiuttec[r].map(h => String(h).trim().toUpperCase());
+            const mIdx = enc.findIndex(h => h.includes('MATRICULA') || h.includes('MATRÍCULA'));
+            const cIdx = enc.findIndex(h => h.includes('CARRERA'));
+            if (mIdx >= 0) {
+                filaEncP = r;
+                idxMatP = mIdx;
+                idxCarP = cIdx;
+                break;
+            }
+        }
+
+        if (filaEncP >= 0) {
+            for (let i = filaEncP + 1; i < filasPiuttec.length; i++) {
+                const f = filasPiuttec[i];
+                const mat = idxMatP >= 0 ? String(f[idxMatP]).trim().replace(/\.0$/, '') : '';
+                const carrera = idxCarP >= 0 ? String(f[idxCarP]).trim() : '';
+                if (mat && carrera && !carreraPorMatricula.has(mat)) {
+                    carreraPorMatricula.set(mat, carrera);
+                }
+            }
+        }
+    }
+
+    // 2. Extraer alumnos desde LISTAS (detecta automáticamente la fila de encabezados)
+    const hojaListas = libro.Sheets['LISTAS'];
+    if (hojaListas) {
+        const filasListas = XLSX.utils.sheet_to_json(hojaListas, { header: 1, defval: '' });
+        let filaEnc = -1;
+        let enc = [];
+
+        for (let r = 0; r < Math.min(filasListas.length, 10); r++) {
+            const cand = filasListas[r].map(h => String(h).trim().toUpperCase());
+            const tieneMat = cand.some(h => h.includes('MATRICULA') || h.includes('MATRÍCULA'));
+            const tieneNom = cand.some(h => h.includes('NOMBRE'));
+            if (tieneMat && tieneNom) {
+                filaEnc = r;
+                enc = cand;
+                break;
+            }
+        }
+
+        if (filaEnc >= 0) {
+            const idxGrupoRegular = enc.findIndex(h => h.startsWith('GRUPO CI ENEABR') || h.startsWith('GRUPO CI SEPDIC'));
+            const idxGrupoRecurse = enc.findIndex(h => h === 'GRUPO CI');
+            const idxDivision = enc.findIndex(h => h === 'DDD' || h.startsWith('DIVISION') || h.startsWith('DIVISIÓN'));
+            const idxMatricula = enc.findIndex(h => h.includes('MATRICULA') || h.includes('MATRÍCULA'));
+            const idxNombre = enc.findIndex(h => h.includes('NOMBRE') && (h.includes('ESTUDIANTE') || h.includes('ALUMNO'))) >= 0
+                ? enc.findIndex(h => h.includes('NOMBRE') && (h.includes('ESTUDIANTE') || h.includes('ALUMNO')))
+                : enc.findIndex(h => h.includes('NOMBRE'));
+            const idxCarrera = enc.findIndex(h => h.includes('CARRERA'));
+
+            for (let i = filaEnc + 1; i < filasListas.length; i++) {
+                const fila = filasListas[i];
+                const matricula = idxMatricula >= 0
+                    ? String(fila[idxMatricula]).trim().replace(/\.0$/, '')
+                    : '';
+                const nombre = idxNombre >= 0 ? String(fila[idxNombre]).trim() : '';
+                if (!matricula && !nombre) continue;
+
+                const division = idxDivision >= 0 ? String(fila[idxDivision]).trim() : '';
+                const carrera = (idxCarrera >= 0 ? String(fila[idxCarrera]).trim() : '')
+                    || carreraPorMatricula.get(matricula)
+                    || '';
+
+                const clavesGrupo = new Set();
+                if (idxGrupoRegular >= 0) {
+                    const gReg = normalizarClaveGrupo(fila[idxGrupoRegular]);
+                    if (gReg) clavesGrupo.add(gReg);
+                }
+                if (idxGrupoRecurse >= 0) {
+                    const gRec = normalizarClaveGrupo(fila[idxGrupoRecurse]);
+                    if (gRec) clavesGrupo.add(gRec);
+                }
+
+                for (const claveGrupo of clavesGrupo) {
+                    if (!mapaAlumnos.has(claveGrupo)) {
+                        mapaAlumnos.set(claveGrupo, []);
+                    }
+                    const lista = mapaAlumnos.get(claveGrupo);
+                    const duplicado = lista.some(a => a.matricula === matricula && a.nombre === nombre);
+                    if (!duplicado) {
+                        lista.push({
+                            nombre,
+                            matricula,
+                            division,
+                            carrera
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    for (const lista of mapaAlumnos.values()) {
+        lista.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+    }
+
+    return mapaAlumnos;
+}
+
+function resumenListas(mapa) {
+    let totalAlumnos = 0;
+    for (const arr of mapa.values()) totalAlumnos += arr.length;
+    return { grupos: mapa.size, totalAlumnos };
+}
+
 // ---------- Seguridad ----------
 
-// Exige un token válido. El usuario sale del token, no de lo que mande el navegador.
 function verificarToken(req, res, next) {
     const cabecera = req.headers.authorization || '';
     const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : null;
@@ -68,7 +194,6 @@ function verificarToken(req, res, next) {
     }
 }
 
-// Solo deja pasar al admin
 function soloAdmin(req, res, next) {
     if (req.usuario.rol !== 'admin') {
         return res.status(403).json({ error: 'No tienes permiso para esta acción.' });
@@ -76,7 +201,6 @@ function soloAdmin(req, res, next) {
     next();
 }
 
-// Máximo 10 intentos fallidos cada 15 minutos por IP
 const limitarLogin = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 10,
@@ -86,7 +210,6 @@ const limitarLogin = rateLimit({
     message: { error: 'Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.' }
 });
 
-// Filtra por docente; si es admin y no se fuerza soloMios, devuelve todo
 async function filtrarPorDocente(idUsuario, filas, forzarPropios = false) {
     const u = await pool.query('SELECT nombre_completo, rol FROM usuarios WHERE id = $1', [idUsuario]);
     if (u.rows.length === 0) return null;
@@ -97,7 +220,6 @@ async function filtrarPorDocente(idUsuario, filas, forzarPropios = false) {
 
 // ---------- Usuarios ----------
 
-// Registro cerrado: solo el admin puede crear cuentas
 app.post('/api/register', verificarToken, soloAdmin, async (req, res) => {
     try {
         const { nombre_completo, numero_empleado, contrasena } = req.body;
@@ -146,7 +268,6 @@ app.post('/api/login', limitarLogin, async (req, res) => {
 
         const usuario = resultado.rows[0];
 
-        // Acepta la contraseña tal cual o en mayúsculas
         const valida =
             (await bcrypt.compare(contrasena, usuario.contrasena)) ||
             (await bcrypt.compare(contrasena.toUpperCase(), usuario.contrasena));
@@ -155,7 +276,6 @@ app.post('/api/login', limitarLogin, async (req, res) => {
             return res.status(400).json({ error: 'Número de empleado o contraseña incorrectos.' });
         }
 
-        // Token de sesión: dura 8 horas
         const token = jwt.sign(
             { id: usuario.id, rol: usuario.rol },
             process.env.JWT_SECRET,
@@ -187,6 +307,10 @@ app.post('/upload', verificarToken, soloAdmin, upload.single('archivo'), async (
         }
 
         const libro = XLSX.read(req.file.buffer, { type: 'buffer' });
+        listasPorGrupo = extraerListasPorGrupo(libro);
+        const infoListas = resumenListas(listasPorGrupo);
+        console.log(`Listas en memoria: ${infoListas.grupos} grupos, ${infoListas.totalAlumnos} registros de alumnos.`);
+
         const hoja = libro.Sheets['GRUPOS'];
         if (!hoja) {
             return res.status(400).json({ error: 'El Excel no tiene una hoja llamada GRUPOS.' });
@@ -207,13 +331,11 @@ app.post('/upload', verificarToken, soloAdmin, upload.single('archivo'), async (
                 };
             })
             .filter(g => g.grupo && g.docente)
-            // Quita filas repetidas (mismo grupo, docente, horario y asignatura)
             .filter((g, i, lista) =>
                 i === lista.findIndex(x =>
                     x.grupo === g.grupo && x.docente === g.docente &&
                     x.horario === g.horario && x.asignatura === g.asignatura));
 
-        // Reemplaza los datos anteriores por los nuevos en lotes de 500 (todo o nada)
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -272,6 +394,41 @@ app.get('/datos', verificarToken, async (req, res) => {
     }
 });
 
+// Lista de alumnos por grupo desde memoria (disponible para docentes y admin)
+app.get('/lista-grupo/:grupo', verificarToken, async (req, res) => {
+    try {
+        const claveGrupo = normalizarClaveGrupo(decodeURIComponent(req.params.grupo || ''));
+        if (!claveGrupo) {
+            return res.status(400).json({ error: 'Grupo no especificado.' });
+        }
+
+        const u = await pool.query('SELECT nombre_completo, rol FROM usuarios WHERE id = $1', [req.usuario.id]);
+        if (u.rows.length === 0) {
+            return res.status(401).json({ error: 'Usuario no encontrado.' });
+        }
+
+        if (u.rows[0].rol !== 'admin') {
+            const mio = normalizar(u.rows[0].nombre_completo);
+            const gRes = await pool.query('SELECT docente FROM grupos WHERE UPPER(TRIM(grupo)) = $1', [claveGrupo]);
+            const rRes = await pool.query('SELECT docente FROM recurses WHERE UPPER(TRIM(grupo)) = $1', [claveGrupo]);
+            const autorizados = [...gRes.rows, ...rRes.rows].map(x => normalizar(x.docente));
+            if (!autorizados.includes(mio)) {
+                return res.status(403).json({ error: 'No tienes permiso para consultar la lista de este grupo.' });
+            }
+        }
+
+        const alumnos = listasPorGrupo.get(claveGrupo) || [];
+        res.json({
+            grupo: claveGrupo,
+            total: alumnos.length,
+            alumnos
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al obtener la lista del grupo.' });
+    }
+});
+
 // ---------- Excel de recurses ----------
 
 app.post('/upload-recurses', verificarToken, soloAdmin, upload.single('archivo'), async (req, res) => {
@@ -283,16 +440,14 @@ app.post('/upload-recurses', verificarToken, soloAdmin, upload.single('archivo')
         const libro = XLSX.read(req.file.buffer, { type: 'buffer' });
         const hoja = libro.Sheets[libro.SheetNames[0]];
 
-        // Se leen por POSICIÓN porque el Excel repite encabezados. Las filas 1 y 2 son encabezados.
         const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' }).slice(2);
 
-        // Una fila por cada docente + grupo + horario (sin repetir)
         const mapa = new Map();
         for (const f of filas) {
-            const docente = String(f[21]).trim();   // PROFESOR DE RECURSE PRESENCIAL
-            const grupo = String(f[18]).trim();     // segundo "GRUPO CI"
-            const horario = String(f[17]).trim();   // HORARIO
-            const espacio = String(f[16]).trim();   // ESPACIO EDUCATIVO
+            const docente = String(f[21]).trim();
+            const grupo = String(f[18]).trim();
+            const horario = String(f[17]).trim();
+            const espacio = String(f[16]).trim();
             if (!docente || !grupo) continue;
 
             const clave = `${docente}|${grupo}|${horario}`;
@@ -360,7 +515,6 @@ app.get('/recurses', verificarToken, async (req, res) => {
     }
 });
 
-// Encender servidor
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
